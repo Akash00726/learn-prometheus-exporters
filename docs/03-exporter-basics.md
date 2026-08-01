@@ -383,3 +383,204 @@ You'll learn how to:
 * Understand what the Prometheus Python client generates automatically
 
 From this point onward, every lesson will include runnable code, not just theory.
+
+
+
+# Collector Registry
+
+Until now, we've seen that visiting:
+
+```text
+http://localhost:8000/metrics
+```
+
+returns many metrics, even though we only wrote a few lines of Python.
+
+This raises an important question:
+
+**Where are all these metrics stored?**
+
+The answer is the **Collector Registry**.
+
+---
+
+# What is the Collector Registry?
+
+The Collector Registry is an in-memory collection that keeps track of every metric known to the exporter.
+
+Think of it as a catalogue.
+
+```text
+              Collector Registry
+                     │
+      ┌──────────────┼──────────────┐
+      │              │              │
+ Python Metrics  Process Metrics  Custom Metrics
+```
+
+Whenever a metric is created, it is automatically registered with the Collector Registry.
+
+For example:
+
+```python
+temperature = Gauge(
+    "temperature",
+    "Room Temperature"
+)
+```
+
+Internally, the Prometheus client library registers this metric with the registry.
+
+Conceptually, it is similar to:
+
+```python
+registry.register(temperature)
+```
+
+You never call `register()` yourself.
+
+The library performs this automatically.
+
+---
+
+# What Happens During a Request?
+
+When Prometheus or a browser requests:
+
+```text
+GET /metrics
+```
+
+the exporter performs the following steps:
+
+```text
+HTTP Request
+      │
+      ▼
+HTTP Server
+      │
+      ▼
+Collector Registry
+      │
+"Give me every registered metric."
+      │
+      ▼
+Generate text response
+      │
+      ▼
+Return to client
+```
+
+The HTTP server does **not** know anything about CPU metrics, memory metrics, or your custom metrics.
+
+It simply asks the Collector Registry for every registered metric and returns them in the Prometheus text format.
+
+---
+
+# Why Do Default Metrics Appear Automatically?
+
+When the exporter starts, the Prometheus Python client automatically registers several built-in collectors.
+
+These include:
+
+```text
+python_*
+
+process_*
+```
+
+Examples:
+
+```text
+python_gc_collections_total
+
+python_info
+
+process_cpu_seconds_total
+
+process_resident_memory_bytes
+```
+
+These metrics are already in the Collector Registry before you create your own metrics.
+
+When you later create:
+
+```python
+temperature = Gauge(
+    "temperature",
+    "Room Temperature"
+)
+```
+
+the registry simply gains one more metric.
+
+---
+
+# Registry Before and After
+
+Before creating any custom metrics:
+
+```text
+Collector Registry
+
+├── python_gc_objects_collected_total
+├── python_gc_collections_total
+├── process_cpu_seconds_total
+├── process_virtual_memory_bytes
+└── ...
+```
+
+After creating a custom Gauge:
+
+```text
+Collector Registry
+
+├── python_gc_objects_collected_total
+├── python_gc_collections_total
+├── process_cpu_seconds_total
+├── process_virtual_memory_bytes
+├── ...
+└── temperature
+```
+
+Notice that:
+
+* No new HTTP server is created.
+* No new `/metrics` endpoint is created.
+* No new process is started.
+
+The registry simply contains one additional metric.
+
+---
+
+# Why Is There Only One `/metrics` Endpoint?
+
+An exporter may expose hundreds or even thousands of metrics.
+
+Instead of creating a separate endpoint for each metric:
+
+```text
+/metrics/cpu
+/metrics/memory
+/metrics/network
+```
+
+Prometheus expects a single endpoint:
+
+```text
+/metrics
+```
+
+When scraped, that endpoint returns **every metric currently registered**.
+
+This keeps scraping efficient because Prometheus only needs to make one HTTP request.
+
+---
+
+# Key Takeaways
+
+* The Collector Registry is the central store for all metrics.
+* Every metric is automatically registered when it is created.
+* Built-in Python and process metrics are registered automatically.
+* The `/metrics` endpoint returns every metric stored in the Collector Registry.
+* A Prometheus exporter typically exposes one `/metrics` endpoint regardless of how many metrics it contains.
