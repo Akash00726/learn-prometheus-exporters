@@ -9,7 +9,7 @@ requests = Counter(
 start_http_server(8000)
 
 while True:
-    requests.dec()
+    requests.inc()
 
     print("Request Count Increased")
 

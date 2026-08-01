@@ -2,122 +2,40 @@
 
 ## Objective
 
-In this lesson you will learn:
+By the end of this lesson you will understand:
 
 * Why Prometheus has different metric types
 * The difference between Gauge and Counter
-* Why Counter only increases
-* Why `Counter` does not provide `dec()`
-* The difference between `set()` and `inc()`
-* When to use Gauge and Counter
+* When to use each metric type
+* Why Counter only supports increment operations
+* Why Counters reset after application restart
+* How Prometheus recognizes Counter resets
+* What Labels are and why they are essential
+* How Labels create multiple time series from a single metric
 
-> **We will only code Gauge and Counter in this lesson.**
+> **In this lesson we focus on Gauge, Counter and Labels.**
 >
-> Histogram, Summary and Labels will be covered later after we completely understand these two metric types.
+> Histogram and Summary will be covered in a later lesson.
 
 ---
 
 # Theory
 
-In Lesson 01, we learned that a Prometheus exporter exposes metrics through the `/metrics` endpoint.
+In Lesson 01 we learned that an exporter exposes metrics through the `/metrics` endpoint.
 
-Now let's answer a new question.
+Now we need to understand an important question.
 
-**If every metric is just a number, why does Prometheus have multiple metric types?**
+> **If every metric is just a number, why does Prometheus have different metric types?**
 
-The answer lies in **what the number represents**.
+The answer is simple.
 
-Some values represent the **current state**.
+Different numbers represent different kinds of information.
 
-Some values represent **history**.
+Some represent the **current state**.
 
-Prometheus uses different metric types to model these different behaviors.
+Some represent **historical totals**.
 
----
-
-## Current State
-
-Examples:
-
-```text
-CPU Usage
-
-Memory Usage
-
-Temperature
-
-Disk Usage
-
-Running Pods
-
-Queue Length
-```
-
-These values can increase or decrease at any time.
-
-Example:
-
-```text
-CPU Usage
-
-20%
-
-45%
-
-72%
-
-31%
-
-18%
-```
-
-The latest value is the only thing that matters.
-
-For these metrics we use:
-
-**Gauge**
-
----
-
-## Historical Totals
-
-Examples:
-
-```text
-HTTP Requests
-
-Errors
-
-Files Processed
-
-Failed Logins
-
-Emails Sent
-```
-
-Example:
-
-```text
-Requests
-
-100
-
-120
-
-145
-
-180
-
-250
-```
-
-Once a request has been processed, it cannot become "unprocessed".
-
-These values only increase.
-
-For these metrics we use:
-
-**Counter**
+Prometheus uses different metric types to represent those different behaviors.
 
 ---
 
@@ -125,11 +43,20 @@ For these metrics we use:
 
 A Gauge represents the **current state**.
 
-It can:
+A Gauge can:
 
 * Increase
 * Decrease
 * Stay the same
+
+Examples:
+
+* CPU Usage
+* Memory Usage
+* Temperature
+* Queue Length
+* Running Pods
+* Active Sessions
 
 Primary operation:
 
@@ -137,17 +64,23 @@ Primary operation:
 set(value)
 ```
 
-Examples:
+Example:
 
-* CPU Usage
-* Memory Usage
-* Temperature
-* Active Sessions
-* Running Pods
+```python
+temperature.set(25)
 
-Think of a Gauge as a speedometer.
+temperature.set(30)
 
-The needle moves up and down depending on the current state.
+temperature.set(22)
+```
+
+Current value:
+
+```text
+22
+```
+
+A Gauge always represents the latest state.
 
 ---
 
@@ -155,7 +88,7 @@ The needle moves up and down depending on the current state.
 
 A Counter represents a **cumulative total**.
 
-It:
+A Counter:
 
 * Starts at zero
 * Only increases
@@ -175,275 +108,460 @@ inc(value)
 
 Examples:
 
-* Requests Served
+* HTTP Requests
 * Errors
-* Jobs Processed
+* Files Processed
 * Login Attempts
-
-Think of a Counter as an odometer.
-
-The reading keeps increasing throughout the lifetime of the process.
-
----
-
-# Gauge vs Counter
-
-| Gauge               | Counter                 |
-| ------------------- | ----------------------- |
-| Current State       | Historical Total        |
-| `set()`             | `inc()`                 |
-| Can increase        | Can increase            |
-| Can decrease        | Cannot decrease         |
-| Stores latest value | Stores cumulative total |
-
----
-
-# Hands-on Tasks
-
-## Task 1 - Create a Gauge
-
-Create a metric named:
-
-```text
-temperature_celsius
-```
-
-Set its value to:
-
-```text
-25
-```
-
-Verify that it appears in:
-
-```text
-http://localhost:8000/metrics
-```
-
-### Observe
-
-Locate:
-
-```text
-# HELP
-# TYPE
-temperature_celsius
-```
-
----
-
-## Task 2 - Prediction
-
-Before writing any Counter code, answer:
-
-Suppose we create:
-
-```python
-requests = Counter(
-    "requests_total",
-    "Total Requests"
-)
-```
-
-and execute:
-
-```python
-requests.inc()
-requests.inc()
-requests.inc()
-```
-
-Predict:
-
-1. What value will appear?
-2. Where does the value start?
-3. Does `inc()` replace the value or add to it?
-
-Only after making your prediction should you run the code.
-
----
-
-## Task 3 - Build a Counter
-
-Create:
-
-```python
-requests = Counter(
-    "requests_total",
-    "Total Requests"
-)
-```
-
-Increment it every two seconds.
+* Messages Processed
 
 Example:
 
 ```python
-while True:
+requests.inc()
 
-    requests.inc()
+requests.inc()
 
-    time.sleep(2)
+requests.inc(5)
 ```
 
-Verify:
+Current value:
 
 ```text
-requests_total
+7
 ```
 
-Refresh `/metrics` multiple times.
-
-Observe how the value changes.
+Unlike Gauge, Counter accumulates values.
 
 ---
 
-## Task 4 - Can a Counter Decrease?
+# Why Counter Does Not Have dec()
 
-Before searching documentation, predict:
+A Counter represents something that has already happened.
 
-Does this exist?
+For example:
+
+```text
+HTTP Requests
+
+Errors
+
+Emails Sent
+```
+
+These events cannot be undone.
+
+If a library allowed:
 
 ```python
 requests.dec()
 ```
 
-Now test it.
+the metric would lose its meaning.
 
-Observe the exact error message.
+For this reason, the Prometheus client intentionally does not provide a `dec()` method for Counter.
 
-Questions:
-
-1. Does the exporter start?
-2. What error occurs?
-3. Why do you think the library designers intentionally omitted this method?
+The API itself prevents incorrect usage.
 
 ---
 
-## Task 5 - Increment by More Than One
+# Gauge vs Counter
 
-Modify:
+| Gauge         | Counter           |
+| ------------- | ----------------- |
+| Current State | Historical Total  |
+| Can increase  | Can increase      |
+| Can decrease  | Cannot decrease   |
+| Uses `set()`  | Uses `inc()`      |
+| Latest value  | Accumulated value |
+
+---
+
+# Counter Reset
+
+During the lifetime of a process, a Counter never decreases.
+
+However, when the application restarts:
+
+```text
+Old Process
+
+requests_total = 17
+
+↓
+
+Application Stops
+
+↓
+
+New Process
+
+requests_total = 0
+```
+
+The Counter did **not** decrease.
+
+The original Counter no longer exists.
+
+A brand new process creates a brand new Counter.
+
+---
+
+# How Prometheus Handles Counter Reset
+
+Suppose Prometheus observes:
+
+```text
+15
+
+16
+
+17
+
+0
+
+1
+
+2
+```
+
+Prometheus knows that Counters are not allowed to decrease.
+
+Therefore:
+
+```text
+17
+
+↓
+
+0
+```
+
+is interpreted as a **Counter Reset**, not a negative value.
+
+Prometheus continues calculating rates correctly by recognizing that a new Counter has started.
+
+This is one of the reasons why selecting the correct metric type is important.
+
+---
+
+# Labels
+
+Without Labels you might create metrics like:
+
+```text
+frontend_cpu
+
+backend_cpu
+
+database_cpu
+```
+
+As your application grows, the number of metric names grows as well.
+
+Instead, Prometheus encourages using a single metric with labels.
+
+Example:
+
+```text
+pod_cpu{pod="frontend"}
+
+pod_cpu{pod="backend"}
+
+pod_cpu{pod="database"}
+```
+
+The metric name remains the same.
+
+The labels identify the resource.
+
+---
+
+# Creating a Label
+
+Example:
+
+```python
+temperature = Gauge(
+    "room_temperature",
+    "Room Temperature",
+    ["room"]
+)
+```
+
+Here:
+
+```text
+room
+```
+
+is the label name.
+
+---
+
+# Setting Label Values
+
+Example:
+
+```python
+temperature.labels(room="bedroom").set(25)
+
+temperature.labels(room="kitchen").set(28)
+
+temperature.labels(room="office").set(24)
+```
+
+Output:
+
+```text
+room_temperature{room="bedroom"} 25
+
+room_temperature{room="kitchen"} 28
+
+room_temperature{room="office"} 24
+```
+
+Notice that the metric name never changes.
+
+Only the labels do.
+
+---
+
+# Parent Metric and Time Series
+
+This is an important concept.
+
+When you create:
+
+```python
+temperature = Gauge(
+    "room_temperature",
+    "Room Temperature",
+    ["room"]
+)
+```
+
+you create the **parent metric**.
+
+When you call:
+
+```python
+temperature.labels(room="bedroom")
+```
+
+the client creates (or retrieves) a specific **time series**.
+
+Conceptually:
+
+```text
+room_temperature
+
+├── bedroom
+
+├── kitchen
+
+└── office
+```
+
+Each label combination represents an independent time series with its own value.
+
+---
+
+# Hands-on Tasks
+
+## Task 1
+
+Create a Gauge named:
+
+```text
+temperature_celsius
+```
+
+Set different values using:
+
+```python
+set()
+```
+
+Observe the metric in:
+
+```text
+http://localhost:8000/metrics
+```
+
+---
+
+## Task 2
+
+Predict the output of:
+
+```python
+requests = Counter(
+    "requests_total",
+    "Total Requests"
+)
+
+requests.inc()
+
+requests.inc()
+
+requests.inc()
+```
+
+Run the code and compare the result with your prediction.
+
+---
+
+## Task 3
+
+Create a Counter.
+
+Increment it every two seconds.
+
+Observe that the value only increases.
+
+---
+
+## Task 4
+
+Attempt to execute:
+
+```python
+requests.dec()
+```
+
+Observe the error.
+
+Explain why the API intentionally does not provide this method.
+
+---
+
+## Task 5
+
+Replace:
 
 ```python
 requests.inc()
 ```
 
-to
+with
 
 ```python
 requests.inc(5)
 ```
 
-Observe the metric.
+Observe how the Counter behaves.
 
-Questions:
-
-1. Why does `inc()` accept a number?
-2. Can you think of situations where adding 5 or 100 at once is more appropriate than incrementing one by one?
-
-Hint:
-
-Think about:
-
-* Batch processing
-* Queue processing
-* Kubernetes
-* Log processing
+Think about real-world situations where incrementing by more than one is useful.
 
 ---
 
-## Task 6 - Compare Gauge and Counter
+## Task 6
 
-Create both metrics.
+Run the exporter.
+
+Allow the Counter to reach approximately:
 
 ```text
-temperature_celsius
+15
+```
 
+Stop the exporter.
+
+Restart it.
+
+Observe:
+
+```text
 requests_total
 ```
 
-Now update them differently.
-
-Temperature:
-
-```text
-20
-
-25
-
-22
-
-30
-
-18
-```
-
-Requests:
-
-```text
-1
-
-2
-
-3
-
-4
-
-5
-```
-
-Observe how they behave.
-
-Questions:
-
-1. Which metric represents the current state?
-2. Which metric represents accumulated history?
+Explain why the Counter starts from zero again.
 
 ---
 
-# What You Learned
+## Task 7
 
-At this point you should understand:
+Create a Gauge with one label.
 
-* Why Gauge exists
-* Why Counter exists
-* Why Counter uses `inc()`
-* Why Gauge uses `set()`
-* Why Counter does not have `dec()`
-* The difference between current state and cumulative totals
+Example:
+
+```python
+temperature = Gauge(
+    "room_temperature",
+    "Room Temperature",
+    ["room"]
+)
+```
+
+---
+
+## Task 8
+
+Create three label values.
+
+Example:
+
+```python
+temperature.labels(room="bedroom").set(25)
+
+temperature.labels(room="kitchen").set(28)
+
+temperature.labels(room="office").set(24)
+```
+
+Observe the output in `/metrics`.
+
+---
+
+## Task 9
+
+Explain the difference between:
+
+```python
+temperature
+```
+
+and
+
+```python
+temperature.labels(room="bedroom")
+```
+
+Which one represents the parent metric?
+
+Which one represents an individual time series?
 
 ---
 
 # Knowledge Check
 
-Answer these questions in your own words.
+Answer these questions before moving to the next lesson.
 
-1. What problem does Gauge solve?
-2. What problem does Counter solve?
-3. Why shouldn't CPU usage be a Counter?
-4. Why shouldn't HTTP requests be a Gauge?
+1. Why does Prometheus have multiple metric types?
+2. When should you use Gauge?
+3. When should you use Counter?
+4. Why does Counter not provide `dec()`?
 5. What is the difference between `set()` and `inc()`?
-6. Why doesn't Counter provide `dec()`?
-7. What happens when `Counter.inc(5)` is called?
-8. Give three real-world examples of Gauge.
-9. Give three real-world examples of Counter.
-10. If you had to monitor "currently running Kubernetes Pods", which metric type would you choose and why?
+6. Why does a Counter reset after an application restart?
+7. Did the Counter actually decrease after restart?
+8. How does Prometheus recognize a Counter reset?
+9. What problem do Labels solve?
+10. Why are Labels preferred over creating hundreds of different metric names?
+11. What is the difference between a parent metric and a time series?
+12. Give three examples where you would use Labels in a Kubernetes exporter.
 
-Do not continue until you can answer these confidently.
+If you cannot confidently answer these questions, repeat the hands-on tasks before continuing.
 
 ---
 
 # Next Lesson
 
-In Lesson 03 we will answer another important question.
+In Lesson 03 we will replace our manually generated values with real system metrics.
 
-**What happens when a Counter resets to zero after an application restart?**
+You'll learn how to collect:
 
-You'll learn:
+* CPU Usage
+* Memory Usage
+* Disk Usage
 
-* Why this is expected behavior
-* How Prometheus handles counter resets
-* Why counters are still reliable
-* Introduction to PromQL functions such as `rate()`
-
-This is one of the most common interview topics related to Prometheus.
+using Python and expose them as real Prometheus metrics.
