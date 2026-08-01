@@ -145,3 +145,5 @@ If something should be learned through experimentation, prefer giving me a task 
 When I ask "next", continue exactly from where we left off. Do not redesign the curriculum, change the teaching approach, or repeat previous content unless I explicitly ask. Assume the established structure and context remain in effect.
 
 before starting suggest directory structure including project name/folder along with the script to create that and follow that structure throughout the learning so every thing should be tracked.
+
+----------
