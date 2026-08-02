@@ -1,0 +1,18 @@
+server:
+  port: 8000
+
+exporter:
+  poll_interval: 30
+
+sensors:
+  kubernetes:
+    enabled: true
+
+  system:
+    enabled: true
+
+  http:
+    enabled: false
+
+  wiz:
+    enabled: true
